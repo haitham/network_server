@@ -39,8 +39,7 @@ public class Database {
 				records.add(formRecord(line));
 			}
 		} catch (Exception e) {
-			System.out.println("Error reading Database file");
-			e.printStackTrace();
+			System.out.println("Database file not found. Will create on writing");
 		}
 	}
 	

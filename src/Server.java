@@ -52,11 +52,11 @@ public class Server {
 		if ("Kill".equals(parts[0].trim())){
 			alive = false;
 			return database.save() + "\nServer dying"; 
-		} else if (parts[0].trim().equals("Insert ")){
+		} else if (parts[0].trim().equals("Insert")){
 			if (parts.length != 4)
 				return "ERROR: Wrong number of parameters";
 			return database.insert(parts[1], parts[2], new Integer(parts[3]));
-		} else if (parts[0].trim().equals("Find ")){
+		} else if (parts[0].trim().equals("Find")){
 			if (parts.length != 3)
 				return "ERROR: Wrong number of parameters";
 			List<Record> records = database.retrieve(parts[1], parts[2], null);
@@ -65,7 +65,7 @@ public class Server {
 				buffer.append("\n").append(record.toString());
 			}
 			return buffer.toString();
-		} else if (parts[0].trim().equals("Delete ")){
+		} else if (parts[0].trim().equals("Delete")){
 			if (parts.length < 2 || parts.length > 4)
 				return "ERROR: Wrong number of parameters";
 			String name = parts[1];
