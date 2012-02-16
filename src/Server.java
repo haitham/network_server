@@ -21,6 +21,7 @@ public class Server {
 		}
 		database = new Database(databasePath);
 		try {
+			System.out.println("===Server started, now listening===");
 			DatagramSocket socket = new DatagramSocket(port);
 			while(alive){
 				//read
@@ -28,6 +29,7 @@ public class Server {
 				DatagramPacket packet = new DatagramPacket(buf, buf.length);
 				socket.receive(packet);
 				String command = new String(packet.getData(), 0, packet.getLength());
+				System.out.println(">> From " + packet.getAddress().toString() + ":" + packet.getPort() + " > " + command);
 				
 				//process
 				String result = processCommand(command);
@@ -48,7 +50,7 @@ public class Server {
 	}
 
 	private String processCommand(String command) {
-		String[] parts = command.split("\\s");
+		String[] parts = command.split("\\s+");
 		if ("Kill".equals(parts[0].trim())){
 			alive = false;
 			return database.save() + "\nServer dying"; 
@@ -60,7 +62,7 @@ public class Server {
 			if (parts.length != 3)
 				return "ERROR: Wrong number of parameters";
 			List<Record> records = database.retrieve(parts[1], parts[2], null);
-			StringBuffer buffer = new StringBuffer(records.size());
+			StringBuffer buffer = new StringBuffer().append(records.size()).append(" record(s) found");
 			for (Record record : records){
 				buffer.append("\n").append(record.toString());
 			}

@@ -38,6 +38,7 @@ public class Database {
 			while ((line = reader.readLine()) != null){
 				records.add(formRecord(line));
 			}
+			reader.close();
 		} catch (Exception e) {
 			System.out.println("Database file not found. Will create on writing");
 		}
@@ -84,6 +85,7 @@ public class Database {
 			for (Record record : records){
 				writer.write(record.toString() + "\n");
 			}
+			writer.close();
 		} catch (Exception e) {
 			System.out.println("Error writing Database file");
 			e.printStackTrace();
