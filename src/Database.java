@@ -3,7 +3,6 @@ import java.io.BufferedWriter;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -92,5 +91,9 @@ public class Database {
 			return "Error writing Database file";
 		}
 		return "Database saved successfully";
+	}
+	
+	public String link(String server){
+		for ()
 	}
 }

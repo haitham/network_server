@@ -3,11 +3,21 @@ public class Record {
 	private String name;
 	private IPAddress ipAddress;
 	private Integer port;
+	private Boolean linked;
 	
 	public Record(String name, String ipAddress, Integer port) {
 		this.name = name;
 		this.ipAddress = new IPAddress(ipAddress);
 		this.port = port;
+		this.linked = false;
+	}
+	
+	public void setLinked(Boolean linked){
+		this.linked = linked;
+	}
+	
+	public Boolean isLinked(){
+		return linked;
 	}
 	
 	public String getName() {
