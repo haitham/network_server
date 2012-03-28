@@ -5,6 +5,8 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 
@@ -38,7 +40,7 @@ public class Server {
 				new Thread(new Runnable() {
 					public void run() {
 						//process
-						String result = processCommand(command);
+						String result = processCommand(command, clientAddress);
 						
 						//write
 						byte[] buf = result.getBytes();
@@ -62,7 +64,7 @@ public class Server {
 		}
 	}
 
-	private String processCommand(String command) {
+	private String processCommand(String command, InetAddress clientAddress) {
 		String[] parts = command.split("\\s+");
 		if ("Kill".equals(parts[0].trim())){
 			//Kill command
@@ -101,9 +103,87 @@ public class Server {
 			if (parts.length != 2)
 				return "ERROR: Wrong number of parameters";
 			return unlink(parts[1]);
+		} else if (parts[0].trim().equals("Register")){
+			//Register command
+			if (parts.length != 3)
+				return "ERROR: Wrong number of parameters";
+			return database.insertClient(parts[1], clientAddress.toString(), new Integer(parts[2]));
+		} else if (parts[0].trim().equals("Unregister")){
+			//Unregister command
+			if (parts.length != 2)
+				return "ERROR: Wrong number of parameters";
+			return database.deleteClient(parts[1]);
+		} else if (parts[0].trim().equals("List")){
+			// List command
+			if (parts.length != 3)
+				return "ERROR: Wrong number of parameters";
+			return listClients(parts[1], parts[2]);
 		} else{
 			return "Unknown command";
 		}
+	}
+
+	private String listClients(String serverName, String clientName) {
+		// A map of server => clients
+		HashMap<String, List<String>> results = new HashMap<String, List<String>>();
+		// check for self server
+		Boolean self = false;
+		if (serverName.equals("*") || serverName.toLowerCase().matches("\"(.+\\,)?self(\\,.+)?\"")){
+			results.put("self", listLocalClients(clientName));
+			self = true;
+		}
+		//retrieving other servers
+		List<Record> servers = database.retrieveServers(serverName, null, null);
+		Integer serverCount = serverName.length() - serverName.replaceAll("\\,", "").length() + 1;
+		if (self)
+			serverCount -= 1;
+		if (servers.size() < serverCount)
+			return "ERROR: Unknown server name(s)";
+		// checking if a server is not linked
+		String unlinkedServers = "";
+		for (Record server : servers){
+			if (!server.isLinked())
+				unlinkedServers = unlinkedServers + " " + server.getName();
+		}
+		if (!unlinkedServers.isEmpty())
+			return "ERROR: Unlinked server(s): [" + unlinkedServers + "]";
+		// listing clients from other linked servers
+		for (Record server : servers){
+			if (results.get(server.getName()) != null)
+				continue;
+			results.put(server.getName(), listRemoteClients(server, clientName));
+		}
+		
+		//returning results in literal manner
+		StringBuffer buffer = new StringBuffer();
+		Integer resultCount = 0;
+		for (String server : results.keySet()){
+			List<String> clients = results.get(server);
+			resultCount += clients.size();
+			for (String client : clients){
+				buffer.append(server).append("/").append(client).append("\n");
+			}
+		}
+		return "" + resultCount + " results found\n" + buffer.toString();
+	}
+
+	private List<String> listRemoteClients(Record server, String clientName) {
+		String response = sendAndReceive(server.getIpAddress(), server.getPort(), "List self " + clientName);
+		String[] responseLines = response.split("\n");
+		List<String> clients = new ArrayList<String>();
+		for (int i=1; i<responseLines.length; i++){
+			if (responseLines[i].trim().isEmpty())
+				continue;
+			clients.add(responseLines[i].trim().split("/")[1]);
+		}
+		return clients;
+	}
+
+	private List<String> listLocalClients(String clientName) {
+		List<String> clients = new ArrayList<String>();
+		for (Record client : database.retrieveClients(clientName))
+			clients.add(client.getName());
+		return clients;
 	}
 
 	private String link(String serverName) {

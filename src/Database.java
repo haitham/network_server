@@ -45,6 +45,31 @@ public class Database {
 		}
 	}
 	
+	public List<Record> retrieveClients(String name){
+		List<Record> results = new ArrayList<Record>();
+		for (Record record : clients){
+			if (record.matches(name, null, null)){
+				results.add(record);
+			}
+		}
+		return results;
+	}
+	
+	public String insertClient(String name, String ipAddress, Integer port){
+		if (retrieveClients(name).size() > 0)
+			return "ERROR: client name has already been used";
+		clients.add(new Record(name, ipAddress, port));
+		return "Client resgistered successfully";
+	}
+	
+	public String deleteClient(String name){
+		List<Record> results = retrieveClients(name);
+		if (results.isEmpty())
+			return "ERROR: record not found";
+		results.remove(results.get(0));
+		return "Client unregistered successfully";
+	}
+	
 	public List<Record> retrieveServers(String name, String ipAddress, Integer port){
 		List<Record> results = new ArrayList<Record>();
 		for (Record record : servers){
@@ -57,7 +82,7 @@ public class Database {
 	
 	public String insertServer(String name, String ipAddress, Integer port){
 		if (retrieveServers(name, null, null).size() > 0)
-			return "ERROR: a record exists with the same name";
+			return "ERROR: server name has already been used";
 		servers.add(new Record(name, ipAddress, port));
 		return "Record Added successfully";
 	}

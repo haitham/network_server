@@ -37,7 +37,7 @@ public class Record {
 	 * name is mandatory, others are matched only if provided
 	 */
 	public Boolean matches(String name, String ipAddress, Integer port){
-		if (!"*".equals(name) && !this.name.equals(name)){
+		if (!"*".equals(name) && !this.name.equals(name) && !name.matches("\"(.+\\,)?" + this.name + "(\\,.+)?\"")){
 			return false;
 		}
 		if (ipAddress != null && !this.ipAddress.matches(ipAddress)){
