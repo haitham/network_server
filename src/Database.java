@@ -12,13 +12,15 @@ import java.util.List;
 
 public class Database {
 	
-	private List<Record> records;
+	private List<Record> servers;
 	private String path;
+	private List<Record> clients;
 	
 	public Database(String path) {
 		this.path = path;
-		this.records = new ArrayList<Record>();
-		readRecords(path);
+		this.servers = new ArrayList<Record>();
+		this.clients = new ArrayList<Record>();
+		readServers(path);
 	}
 	
 	private Record formRecord(String recordString){
@@ -29,13 +31,13 @@ public class Database {
 		return new Record(parts[0], parts[1], new Integer(parts[2]));
 	}
 	
-	private void readRecords(String path){
+	private void readServers(String path){
 		try {
 			FileInputStream iStream = new FileInputStream(path);
 			BufferedReader reader = new BufferedReader(new InputStreamReader(new DataInputStream(iStream)));
 			String line = null;
 			while ((line = reader.readLine()) != null){
-				records.add(formRecord(line));
+				servers.add(formRecord(line));
 			}
 			reader.close();
 		} catch (Exception e) {
@@ -43,9 +45,9 @@ public class Database {
 		}
 	}
 	
-	public List<Record> retrieve(String name, String ipAddress, Integer port){
+	public List<Record> retrieveServers(String name, String ipAddress, Integer port){
 		List<Record> results = new ArrayList<Record>();
-		for (Record record : records){
+		for (Record record : servers){
 			if (record.matches(name, ipAddress, port)){
 				results.add(record);
 			}
@@ -53,22 +55,22 @@ public class Database {
 		return results;
 	}
 	
-	public String insert(String name, String ipAddress, Integer port){
-		if (retrieve(name, null, null).size() > 0)
+	public String insertServer(String name, String ipAddress, Integer port){
+		if (retrieveServers(name, null, null).size() > 0)
 			return "ERROR: a record exists with the same name";
-		records.add(new Record(name, ipAddress, port));
+		servers.add(new Record(name, ipAddress, port));
 		return "Record Added successfully";
 	}
 	
-	public String delete(String name, String ipAddress, Integer port){
+	public String deleteServer(String name, String ipAddress, Integer port){
 		List<Integer> occurences = new ArrayList<Integer>();
-		for (int i=0; i< records.size(); i++){
-			if (records.get(i).matches(name, ipAddress, port)){
+		for (int i=0; i< servers.size(); i++){
+			if (servers.get(i).matches(name, ipAddress, port)){
 				occurences.add(i);
 			}
 		}
 		for (int o : occurences){
-			records.remove(o);
+			servers.remove(o);
 		}
 		if (occurences.size() == 0){
 			return "ERROR: record not found";
@@ -81,7 +83,7 @@ public class Database {
 		try {
 			FileOutputStream oStream = new FileOutputStream(path);
 			BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new DataOutputStream(oStream)));
-			for (Record record : records){
+			for (Record record : servers){
 				writer.write(record.toString() + "\n");
 			}
 			writer.close();
@@ -93,7 +95,4 @@ public class Database {
 		return "Database saved successfully";
 	}
 	
-	public String link(String server){
-		for ()
-	}
 }

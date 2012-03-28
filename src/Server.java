@@ -3,6 +3,8 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.util.List;
 
 
@@ -70,12 +72,12 @@ public class Server {
 			//Insert command
 			if (parts.length != 4)
 				return "ERROR: Wrong number of parameters";
-			return database.insert(parts[1], parts[2], new Integer(parts[3]));
+			return database.insertServer(parts[1], parts[2], new Integer(parts[3]));
 		} else if (parts[0].trim().equals("Find")){
 			//Find command
 			if (parts.length != 3)
 				return "ERROR: Wrong number of parameters";
-			List<Record> records = database.retrieve(parts[1], parts[2], null);
+			List<Record> records = database.retrieveServers(parts[1], parts[2], null);
 			StringBuffer buffer = new StringBuffer().append(records.size()).append(" record(s) found");
 			for (Record record : records){
 				buffer.append("\n").append(record.toString());
@@ -88,12 +90,67 @@ public class Server {
 			String name = parts[1];
 			String ipAddress = parts.length < 3 ? null : parts[2];
 			Integer port = parts.length < 4 ? null : new Integer(parts[3]);
-			return database.delete(name, ipAddress, port);
-//		} else if (parts[0].trim().equals("Link")){
-//			// Link command
+			return database.deleteServer(name, ipAddress, port);
+		} else if (parts[0].trim().equals("Link")){
+			// Link command
+			if (parts.length != 2)
+				return "ERROR: Wrong number of parameters";
+			return link(parts[1]);
+		} else if (parts[0].trim().equals("Unlink")){
+			// Unlink command
+			if (parts.length != 2)
+				return "ERROR: Wrong number of parameters";
+			return unlink(parts[1]);
 		} else{
-			return "ERROR: Unknown command";
+			return "Unknown command";
 		}
+	}
+
+	private String link(String serverName) {
+		List<Record> servers = database.retrieveServers(serverName, null, null);
+		if (servers.isEmpty())
+			return "ERROR: unknown server name";
+		Record server = servers.get(0);
+		if (server.isLinked())
+			return "WARNING: server was already linked - command ignored";
+		String response = sendAndReceive(server.getIpAddress(), server.getPort(), "Test");
+		if ("ERROR".equals(response))
+			return "ERROR: unable to connect to " + server.getName() + "(" + server.getIpAddress() + ":" + server.getPort() + ")";
+		else {
+			server.setLinked(true);
+			return serverName + " linked successfully";
+		}
+	}
+	
+	private String unlink(String serverName){
+		List<Record> servers = database.retrieveServers(serverName, null, null);
+		if (servers.isEmpty())
+			return "ERROR: unknown server name";
+		Record server = servers.get(0);
+		if (!server.isLinked())
+			return "WARNING: server was not linked - command ignored";
+		server.setLinked(false);
+		return serverName + " unlinked successfully";
+	}
+	
+	private String sendAndReceive(String ipAddress, Integer port, String command) {
+		String result = "";
+		try {
+			InetAddress address = InetAddress.getByName(ipAddress);
+			DatagramSocket socket = new DatagramSocket();
+			socket.setSoTimeout(6000);
+			//sending
+			DatagramPacket packet = new DatagramPacket(command.getBytes(), command.getBytes().length, address, port);
+			socket.send(packet);
+			//receiving
+			byte[] buf = new byte[256];
+			packet = new DatagramPacket(buf, buf.length);
+			socket.receive(packet);
+			result = new String(packet.getData(), 0, packet.getLength());
+		} catch (Exception e) {
+			return "ERROR";
+        }
+		return result;
 	}
 	
 }
