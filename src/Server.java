@@ -118,9 +118,79 @@ public class Server {
 			if (parts.length != 3)
 				return "ERROR: Wrong number of parameters";
 			return listClients(parts[1], parts[2]);
+		} else if (command.matches("^Send\\s.+")){
+			// Send command
+			String[] lines = command.split("\n");
+			parts = lines[0].split("\\s+");
+			if (parts.length != 3)
+				return "ERROR: Wrong number of parameters";
+			String message = "";
+			for (int i=1; i<lines.length; i++)
+				message = lines[i] + "\n";
+			return sendMessage(parts[1], parts[2], message);
 		} else{
 			return "Unknown command";
 		}
+	}
+
+	private String sendMessage(String serverName, String clientName, String message) {
+		// A map of server => clients
+		HashMap<String, List<String>> recepients = new HashMap<String, List<String>>();
+		// check for self server
+		Boolean self = false;
+		if (serverName.equals("*") || serverName.toLowerCase().matches("\"(.+\\,)?self(\\,.+)?\"")){
+			recepients.put("self", sendLocalMessage(clientName, message));
+			self = true;
+		}
+		//retrieving other servers
+		List<Record> servers = database.retrieveServers(serverName, null, null);
+		if (serverName != "*"){
+			Integer serverCount = serverName.length() - serverName.replaceAll("\\,", "").length() + 1;
+			if (self)
+				serverCount -= 1;
+			if (servers.size() < serverCount)
+				return "ERROR: Unknown server name(s)";
+		}
+		// sending to clients from other linked servers
+		String unlinkedServers = "";
+		for (Record server : servers){
+			if (!server.isLinked()){
+				unlinkedServers = unlinkedServers + " " + server.getName();
+				continue;
+			}
+			if (recepients.get(server.getName()) != null)
+				continue;
+			recepients.put(server.getName(), sendRemoteMessage(server, clientName, message));
+		}
+		
+		//returning results in literal manner
+		StringBuffer buffer = new StringBuffer();
+		Integer resultCount = 0;
+		for (String server : recepients.keySet()){
+			List<String> clients = recepients.get(server);
+			resultCount += clients.size();
+			for (String client : clients){
+				buffer.append(server).append("/").append(client).append("\n");
+			}
+		}
+		if (!unlinkedServers.isEmpty())
+			unlinkedServers = " - WARNING: unlinked servers were excluded: [" + unlinkedServers + "]";
+		return "Delivered to " + resultCount + " recepients" + unlinkedServers + "\n" + buffer.toString();
+	}
+
+	private List<String> sendRemoteMessage(Record server, String clientName, String message) {
+		// TODO construct the command, with server name = self
+		// send to server
+		// get the names from the response
+		// return the names
+		return null;
+	}
+
+	private List<String> sendLocalMessage(String clientName, String message) {
+		// TODO find matching clients
+		// send message to each, record his name if success
+		// return these names
+		return null;
 	}
 
 	private String listClients(String serverName, String clientName) {
@@ -134,21 +204,20 @@ public class Server {
 		}
 		//retrieving other servers
 		List<Record> servers = database.retrieveServers(serverName, null, null);
-		Integer serverCount = serverName.length() - serverName.replaceAll("\\,", "").length() + 1;
-		if (self)
-			serverCount -= 1;
-		if (servers.size() < serverCount)
-			return "ERROR: Unknown server name(s)";
-		// checking if a server is not linked
+		if (serverName != "*"){
+			Integer serverCount = serverName.length() - serverName.replaceAll("\\,", "").length() + 1;
+			if (self)
+				serverCount -= 1;
+			if (servers.size() < serverCount)
+				return "ERROR: Unknown server name(s)";
+		}
+		// listing clients from other linked servers
 		String unlinkedServers = "";
 		for (Record server : servers){
-			if (!server.isLinked())
+			if (!server.isLinked()){
 				unlinkedServers = unlinkedServers + " " + server.getName();
-		}
-		if (!unlinkedServers.isEmpty())
-			return "ERROR: Unlinked server(s): [" + unlinkedServers + "]";
-		// listing clients from other linked servers
-		for (Record server : servers){
+				continue;
+			}
 			if (results.get(server.getName()) != null)
 				continue;
 			results.put(server.getName(), listRemoteClients(server, clientName));
@@ -164,7 +233,9 @@ public class Server {
 				buffer.append(server).append("/").append(client).append("\n");
 			}
 		}
-		return "" + resultCount + " results found\n" + buffer.toString();
+		if (!unlinkedServers.isEmpty())
+			unlinkedServers = " - WARNING: unlinked servers were excluded: [" + unlinkedServers + "]";
+		return "" + resultCount + " results found" + unlinkedServers + "\n" + buffer.toString();
 	}
 
 	private List<String> listRemoteClients(Record server, String clientName) {
@@ -172,9 +243,8 @@ public class Server {
 		String[] responseLines = response.split("\n");
 		List<String> clients = new ArrayList<String>();
 		for (int i=1; i<responseLines.length; i++){
-			if (responseLines[i].trim().isEmpty())
-				continue;
-			clients.add(responseLines[i].trim().split("/")[1]);
+			if (!responseLines[i].trim().isEmpty() && responseLines[i].indexOf("/") > 0)
+				clients.add(responseLines[i].trim().split("/")[1]);
 		}
 		return clients;
 	}
