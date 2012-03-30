@@ -3,8 +3,6 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
-import java.net.SocketTimeoutException;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -28,13 +26,29 @@ public class Server {
 			final DatagramSocket socket = new DatagramSocket(port);
 			while(alive){
 				//read
-				byte[] buf = new byte[256];
+				byte[] buf = new byte[1024];
 				DatagramPacket packet = new DatagramPacket(buf, buf.length);
 				socket.receive(packet);
 				final String command = new String(packet.getData(), 0, packet.getLength());
 				final InetAddress clientAddress = packet.getAddress();
 				final int clientPort = packet.getPort();
 				System.out.println(">> From " + clientAddress.toString() + ":" + clientPort + " > " + command);
+				
+				//Special case for kill - no thread
+				if (command.trim().startsWith("Kill")){
+					//process
+					String result = processCommand(command, clientAddress);
+					
+					//write
+					buf = result.getBytes();
+					packet = new DatagramPacket(buf, buf.length, clientAddress, clientPort);
+					try {
+						socket.send(packet);
+					} catch (IOException e) {
+						System.out.println("Error writing to socket");
+					}
+					return;
+				}
 				
 				// Spawn a thread for processing the incoming command
 				new Thread(new Runnable() {
@@ -49,7 +63,6 @@ public class Server {
 							socket.send(packet);
 						} catch (IOException e) {
 							System.out.println("Error writing to socket");
-							e.printStackTrace();
 						}
 					}
 				}, "CommandProcessor").start();
@@ -107,7 +120,7 @@ public class Server {
 			//Register command
 			if (parts.length != 3)
 				return "ERROR: Wrong number of parameters";
-			return database.insertClient(parts[1], clientAddress.toString(), new Integer(parts[2]));
+			return database.insertClient(parts[1], clientAddress.toString().replaceFirst("/", ""), new Integer(parts[2]));
 		} else if (parts[0].trim().equals("Unregister")){
 			//Unregister command
 			if (parts.length != 2)
@@ -117,8 +130,8 @@ public class Server {
 			// List command
 			if (parts.length != 3)
 				return "ERROR: Wrong number of parameters";
-			return listClients(parts[1], parts[2]);
-		} else if (command.matches("^Send\\s.+")){
+			return listClients(parts[2], parts[1]);
+		} else if (parts[0].trim().equals("Send")){
 			// Send command
 			String[] lines = command.split("\n");
 			parts = lines[0].split("\\s+");
@@ -126,8 +139,8 @@ public class Server {
 				return "ERROR: Wrong number of parameters";
 			String message = "";
 			for (int i=1; i<lines.length; i++)
-				message = lines[i] + "\n";
-			return sendMessage(parts[1], parts[2], message);
+				message = message + lines[i] + "\n";
+			return sendMessage(parts[2], parts[1], message);
 		} else{
 			return "Unknown command";
 		}
@@ -138,7 +151,7 @@ public class Server {
 		HashMap<String, List<String>> recepients = new HashMap<String, List<String>>();
 		// check for self server
 		Boolean self = false;
-		if (serverName.equals("*") || serverName.toLowerCase().matches("\"(.+\\,)?self(\\,.+)?\"")){
+		if (serverName.equals("*") || serverName.toLowerCase().matches("(\"(.+\\,)?)?self((\\,.+)?\")?")){
 			recepients.put("self", sendLocalMessage(clientName, message));
 			self = true;
 		}
@@ -179,18 +192,23 @@ public class Server {
 	}
 
 	private List<String> sendRemoteMessage(Record server, String clientName, String message) {
-		// TODO construct the command, with server name = self
-		// send to server
-		// get the names from the response
-		// return the names
-		return null;
+		String response = sendAndReceive(server.getIpAddress(), server.getPort(), "Send " + clientName + " self\n" + message);
+		String[] responseLines = response.split("\n");
+		List<String> clients = new ArrayList<String>();
+		for (int i=1; i<responseLines.length; i++){
+			if (!responseLines[i].trim().isEmpty() && responseLines[i].indexOf("/") > 0)
+				clients.add(responseLines[i].trim().split("/")[1]);
+		}
+		return clients;
 	}
 
 	private List<String> sendLocalMessage(String clientName, String message) {
-		// TODO find matching clients
-		// send message to each, record his name if success
-		// return these names
-		return null;
+		List<String> recepients = new ArrayList<String>();
+		for (Record client : database.retrieveClients(clientName)){
+			if (sendAndReceive(client.getIpAddress(), client.getPort(), message).indexOf("ERROR") < 0)
+				recepients.add(client.getName());
+		}
+		return recepients;
 	}
 
 	private String listClients(String serverName, String clientName) {
@@ -198,7 +216,7 @@ public class Server {
 		HashMap<String, List<String>> results = new HashMap<String, List<String>>();
 		// check for self server
 		Boolean self = false;
-		if (serverName.equals("*") || serverName.toLowerCase().matches("\"(.+\\,)?self(\\,.+)?\"")){
+		if (serverName.equals("*") || serverName.toLowerCase().matches("(\"(.+\\,)?)?self((\\,.+)?\")?")){
 			results.put("self", listLocalClients(clientName));
 			self = true;
 		}
@@ -239,7 +257,7 @@ public class Server {
 	}
 
 	private List<String> listRemoteClients(Record server, String clientName) {
-		String response = sendAndReceive(server.getIpAddress(), server.getPort(), "List self " + clientName);
+		String response = sendAndReceive(server.getIpAddress(), server.getPort(), "List " + clientName + " self");
 		String[] responseLines = response.split("\n");
 		List<String> clients = new ArrayList<String>();
 		for (int i=1; i<responseLines.length; i++){
@@ -262,7 +280,7 @@ public class Server {
 			return "ERROR: unknown server name";
 		Record server = servers.get(0);
 		if (server.isLinked())
-			return "WARNING: server was already linked - command ignored";
+			return "ERROR: server was already linked - command ignored";
 		String response = sendAndReceive(server.getIpAddress(), server.getPort(), "Test");
 		if ("ERROR".equals(response))
 			return "ERROR: unable to connect to " + server.getName() + "(" + server.getIpAddress() + ":" + server.getPort() + ")";
@@ -278,7 +296,7 @@ public class Server {
 			return "ERROR: unknown server name";
 		Record server = servers.get(0);
 		if (!server.isLinked())
-			return "WARNING: server was not linked - command ignored";
+			return "ERROR: server was not linked - command ignored";
 		server.setLinked(false);
 		return serverName + " unlinked successfully";
 	}
@@ -288,7 +306,7 @@ public class Server {
 		try {
 			InetAddress address = InetAddress.getByName(ipAddress);
 			DatagramSocket socket = new DatagramSocket();
-			socket.setSoTimeout(6000);
+			socket.setSoTimeout(1000);
 			//sending
 			DatagramPacket packet = new DatagramPacket(command.getBytes(), command.getBytes().length, address, port);
 			socket.send(packet);

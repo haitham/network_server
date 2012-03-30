@@ -66,7 +66,7 @@ public class Database {
 		List<Record> results = retrieveClients(name);
 		if (results.isEmpty())
 			return "ERROR: record not found";
-		results.remove(results.get(0));
+		clients.remove(results.get(0));
 		return "Client unregistered successfully";
 	}
 	
