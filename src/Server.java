@@ -3,6 +3,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -166,6 +167,7 @@ public class Server {
 		}
 		// sending to clients from other linked servers
 		String unlinkedServers = "";
+		String deadServers = "";
 		for (Record server : servers){
 			if (!server.isLinked()){
 				unlinkedServers = unlinkedServers + " " + server.getName();
@@ -173,7 +175,11 @@ public class Server {
 			}
 			if (recepients.get(server.getName()) != null)
 				continue;
-			recepients.put(server.getName(), sendRemoteMessage(server, clientName, message));
+			try {
+				recepients.put(server.getName(), sendRemoteMessage(server, clientName, message));
+			} catch (SocketTimeoutException e) {
+				deadServers = deadServers + " " + server.getName();
+			}
 		}
 		
 		//returning results in literal manner
@@ -186,13 +192,21 @@ public class Server {
 				buffer.append(server).append("/").append(client).append("\n");
 			}
 		}
+		String warning = "";
 		if (!unlinkedServers.isEmpty())
-			unlinkedServers = " - WARNING: unlinked servers were excluded: [" + unlinkedServers + "]";
-		return "Delivered to " + resultCount + " recepients" + unlinkedServers + "\n" + buffer.toString();
+			warning += " - WARNING: unlinked servers were excluded: [" + unlinkedServers + "]";
+		if (!deadServers.isEmpty())
+			warning += " - WARNING: Dead linked servers: [" + deadServers + "]";
+		if (resultCount == 0)
+			return "Error: no matching recepients available" + warning + "\n" + buffer.toString();
+		else
+			return "Delivered to " + resultCount + " recepients" + warning + "\n" + buffer.toString();
 	}
 
-	private List<String> sendRemoteMessage(Record server, String clientName, String message) {
+	private List<String> sendRemoteMessage(Record server, String clientName, String message) throws SocketTimeoutException {
 		String response = sendAndReceive(server.getIpAddress(), server.getPort(), "Send " + clientName + " self\n" + message);
+		if (response.trim().startsWith("ERROR"))
+			throw new SocketTimeoutException();
 		String[] responseLines = response.split("\n");
 		List<String> clients = new ArrayList<String>();
 		for (int i=1; i<responseLines.length; i++){
@@ -231,6 +245,7 @@ public class Server {
 		}
 		// listing clients from other linked servers
 		String unlinkedServers = "";
+		String deadServers = "";
 		for (Record server : servers){
 			if (!server.isLinked()){
 				unlinkedServers = unlinkedServers + " " + server.getName();
@@ -238,7 +253,11 @@ public class Server {
 			}
 			if (results.get(server.getName()) != null)
 				continue;
-			results.put(server.getName(), listRemoteClients(server, clientName));
+			try {
+				results.put(server.getName(), listRemoteClients(server, clientName));
+			} catch (SocketTimeoutException e) {
+				deadServers = deadServers + " " + server.getName();
+			}
 		}
 		
 		//returning results in literal manner
@@ -251,13 +270,18 @@ public class Server {
 				buffer.append(server).append("/").append(client).append("\n");
 			}
 		}
+		String warning = "";
 		if (!unlinkedServers.isEmpty())
-			unlinkedServers = " - WARNING: unlinked servers were excluded: [" + unlinkedServers + "]";
-		return "" + resultCount + " results found" + unlinkedServers + "\n" + buffer.toString();
+			warning += " - WARNING: unlinked servers were excluded: [" + unlinkedServers + "]";
+		if (!deadServers.isEmpty())
+			warning += " - WARNING: Dead linked servers: [" + deadServers + "]";
+		return "" + resultCount + " results found" + warning + "\n" + buffer.toString();
 	}
 
-	private List<String> listRemoteClients(Record server, String clientName) {
+	private List<String> listRemoteClients(Record server, String clientName) throws SocketTimeoutException {
 		String response = sendAndReceive(server.getIpAddress(), server.getPort(), "List " + clientName + " self");
+		if (response.trim().startsWith("ERROR"))
+			throw new SocketTimeoutException();
 		String[] responseLines = response.split("\n");
 		List<String> clients = new ArrayList<String>();
 		for (int i=1; i<responseLines.length; i++){
