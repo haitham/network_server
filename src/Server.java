@@ -14,10 +14,18 @@ public class Server {
 	private Integer port;
 	private Boolean alive;
 	private Database database;
+	private String serverName;
+	private HashMap<String, Integer> distanceVector;
+	private List<Neighbor> neighbors;
+	private HashMap<String, RoutingEntry> routingMap;
 	
-	public Server(Integer port, String databasePath) {
+	public Server(Integer port, String name, String databasePath) {
 		this.port = port;
 		this.alive = true;
+		this.serverName = name;
+		this.distanceVector = new HashMap<String, Integer>();
+		this.neighbors = new ArrayList<Neighbor>();
+		this.routingMap = new HashMap<String, RoutingEntry>();
 		if (databasePath == null){
 			databasePath = "datafile";
 		}
@@ -86,9 +94,9 @@ public class Server {
 			return database.save() + "\nServer dying"; 
 		} else if (parts[0].trim().equals("Insert")){
 			//Insert command
-			if (parts.length != 4)
+			if (parts.length != 3)
 				return "ERROR: Wrong number of parameters";
-			return database.insertServer(parts[1], parts[2], new Integer(parts[3]));
+			return database.insertServer(parts[1], new Integer(parts[2]));
 		} else if (parts[0].trim().equals("Find")){
 			//Find command
 			if (parts.length != 3)
@@ -101,17 +109,25 @@ public class Server {
 			return buffer.toString();
 		} else if (parts[0].trim().equals("Delete")){
 			//Delete command
-			if (parts.length < 2 || parts.length > 4)
+			if (parts.length < 1 || parts.length > 3)
 				return "ERROR: Wrong number of parameters";
-			String name = parts[1];
-			String ipAddress = parts.length < 3 ? null : parts[2];
-			Integer port = parts.length < 4 ? null : new Integer(parts[3]);
+			String name = "*";
+			String ipAddress = parts.length < 2 ? null : parts[1];
+			Integer port = parts.length < 3 ? null : new Integer(parts[2]);
 			return database.deleteServer(name, ipAddress, port);
 		} else if (parts[0].trim().equals("Link")){
 			// Link command
-			if (parts.length != 2)
+			List<Record> records;
+			if (parts.length == 2){
+				records = database.retrieveServers(parts[1], null, null);
+			} else if (parts.length == 3){
+				records = database.retrieveServers("*", parts[1], new Integer(parts[2]));
+			} else {
 				return "ERROR: Wrong number of parameters";
-			return link(parts[1]);
+			}
+			if (records.isEmpty())
+				return "ERROR: server name not found";
+			return link(records.get(0));
 		} else if (parts[0].trim().equals("Unlink")){
 			// Unlink command
 			if (parts.length != 2)
@@ -170,7 +186,7 @@ public class Server {
 		String deadServers = "";
 		for (Record server : servers){
 			if (!server.isLinked()){
-				unlinkedServers = unlinkedServers + " " + server.getName();
+				unlinkedServers = unlinkedServers + " " + server.getUrl();
 				continue;
 			}
 			if (recepients.get(server.getName()) != null)
@@ -248,7 +264,7 @@ public class Server {
 		String deadServers = "";
 		for (Record server : servers){
 			if (!server.isLinked()){
-				unlinkedServers = unlinkedServers + " " + server.getName();
+				unlinkedServers = unlinkedServers + " " + server.getUrl();
 				continue;
 			}
 			if (results.get(server.getName()) != null)
@@ -297,20 +313,37 @@ public class Server {
 			clients.add(client.getName());
 		return clients;
 	}
-
-	private String link(String serverName) {
-		List<Record> servers = database.retrieveServers(serverName, null, null);
-		if (servers.isEmpty())
-			return "ERROR: unknown server name";
-		Record server = servers.get(0);
+	
+	private String distanceVectorString(){
+		String result = "";
+		for (String name : distanceVector.keySet()){
+			result = result + " " + name + ":" + distanceVector.get(name);
+		}
+		return result;
+	}
+	
+	private String link(Record server) {
 		if (server.isLinked())
 			return "ERROR: server was already linked - command ignored";
-		String response = sendAndReceive(server.getIpAddress(), server.getPort(), "Test");
+		String message = "ServerLink " + this.serverName + " " + this.port + " " + distanceVectorString();
+		String response = sendAndReceive(server.getIpAddress(), server.getPort(), message);
 		if ("ERROR".equals(response))
-			return "ERROR: unable to connect to " + server.getName() + "(" + server.getIpAddress() + ":" + server.getPort() + ")";
+			return "ERROR: unable to connect to " + server.getUrl();
+		if ("NAMEERROR".equals(response))
+			return "ERROR: name duplication occurred in network";
 		else {
+			String[] parts = response.trim().split("\\s+");
+			server.setName(parts[0]);
 			server.setLinked(true);
-			return serverName + " linked successfully";
+			HashMap<String, Integer> vector = new HashMap<String, Integer>();
+			for (int i=1; i<parts.length; i++){
+				vector.put(parts[i].split("\\:")[0], new Integer(parts[i].split("\\:")[1]));
+			}
+			neighbors.add(new Neighbor(server,vector));
+			//
+			// Recompute routing table
+			//
+			return server.getName() + " linked successfully";
 		}
 	}
 	

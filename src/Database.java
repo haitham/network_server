@@ -28,7 +28,7 @@ public class Database {
 		if (parts.length != 3){ //sanity check
 			System.out.println("Corrupted record");
 		}
-		return new Record(parts[0], parts[1], new Integer(parts[2]));
+		return new Record(parts[0], new Integer(parts[1]));
 	}
 	
 	private void readServers(String path){
@@ -80,10 +80,10 @@ public class Database {
 		return results;
 	}
 	
-	public String insertServer(String name, String ipAddress, Integer port){
-		if (retrieveServers(name, null, null).size() > 0)
-			return "ERROR: server name has already been used";
-		servers.add(new Record(name, ipAddress, port));
+	public String insertServer(String ipAddress, Integer port){
+		if (retrieveServers("*", ipAddress, port).size() > 0)
+			return "ERROR: server IP:port combination has already been used";
+		servers.add(new Record(ipAddress, port));
 		return "Record Added successfully";
 	}
 	

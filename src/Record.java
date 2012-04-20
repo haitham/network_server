@@ -5,6 +5,13 @@ public class Record {
 	private Integer port;
 	private Boolean linked;
 	
+	public Record(String ipAddress, Integer port) {
+		this.name = null;
+		this.ipAddress = new IPAddress(ipAddress);
+		this.port = port;
+		this.linked = false;
+	}
+	
 	public Record(String name, String ipAddress, Integer port) {
 		this.name = name;
 		this.ipAddress = new IPAddress(ipAddress);
@@ -20,6 +27,10 @@ public class Record {
 		return linked;
 	}
 	
+	public void setName(String name){
+		this.name = name;
+	}
+	
 	public String getName() {
 		return name;
 	}
@@ -30,6 +41,10 @@ public class Record {
 
 	public Integer getPort() {
 		return port;
+	}
+	
+	public String getUrl(){
+		return getIpAddress() + ":" + getPort();
 	}
 	
 	/*
@@ -50,7 +65,7 @@ public class Record {
 	}
 	
 	public String toString(){
-		return name + " " + ipAddress.toString() + " " + port;
+		return ipAddress.toString() + " " + port;
 	}
 	
 }
