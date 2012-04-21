@@ -1,4 +1,5 @@
 import java.util.HashMap;
+import java.util.Set;
 
 public class Neighbor {
 	private Record server;
@@ -11,9 +12,23 @@ public class Neighbor {
 	}
 	
 	public Integer getDistance(String server){
+		if (this.server.getName().equals(server))
+			return 0;
 		Integer distance = distanceVector.get(server);
 		if (distance == null)
-			distance = infinity;
+			return infinity;
 		return distance;
+	}
+	
+	public Set<String> reachableServers(){
+		return distanceVector.keySet();
+	}
+	
+	public Record server(){
+		return this.server;
+	}
+	
+	public void setDistanceVector(HashMap<String, Integer> vector){
+		this.distanceVector = vector;
 	}
 }

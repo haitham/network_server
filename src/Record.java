@@ -58,14 +58,14 @@ public class Record {
 		if (ipAddress != null && !this.ipAddress.matches(ipAddress)){
 			return false;
 		}
-		if (port != null && this.port != port){
+		if (port != null && !this.port.equals(port)){
 			return false;
 		}
 		return true;
 	}
 	
 	public String toString(){
-		return ipAddress.toString() + " " + port;
+		return ipAddress.toString() + " " + port + ", name: " + (name == null ? "unknown" : name);
 	}
 	
 }
