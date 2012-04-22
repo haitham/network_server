@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 
 
 public class Server {
@@ -21,6 +23,20 @@ public class Server {
 	private List<Neighbor> neighbors;
 	private HashMap<String, RoutingEntry> routingMap;
 	
+	private class LinkTester extends TimerTask {
+		public void run() {
+			List<String> deads = new ArrayList<>();
+			for (Neighbor neighbor : neighbors){
+				String response = sendAndReceive(neighbor.server().getIpAddress(), neighbor.server().getPort(), "Test");
+				if (response.equals("ERROR"))
+					deads.add(neighbor.server().getName());
+			}
+			for (String dead : deads){
+				serverUnlink("ServerUnlink " + dead);
+			}
+		}
+	}
+	
 	public Server(Integer port, String name, String databasePath) {
 		this.port = port;
 		this.alive = true;
@@ -32,8 +48,9 @@ public class Server {
 			databasePath = "datafile";
 		}
 		database = new Database(databasePath);
+		new Timer().scheduleAtFixedRate(new LinkTester(), 15000, 15000);
 		try {
-			System.out.println("===Server started, now listening===");
+			System.out.println("===Server started on port " + port + ", now listening===");
 			final DatagramSocket socket = new DatagramSocket(port);
 			while(alive){
 				//read
@@ -128,7 +145,7 @@ public class Server {
 				return "ERROR: Wrong number of parameters";
 			}
 			if (records.isEmpty())
-				return "ERROR: server name not found";
+				return "ERROR: server record not found - insert it first";
 			return link(records.get(0));
 		} else if (parts[0].trim().equals("Unlink")){
 			// Unlink command
@@ -141,7 +158,7 @@ public class Server {
 				return "ERROR: Wrong number of parameters";
 			}
 			if (records.isEmpty())
-				return "ERROR: server name not found";
+				return "ERROR: server name not found - insert and link first";
 			return unlink(records.get(0));
 		} else if (parts[0].trim().equals("Register")){
 			//Register command
@@ -165,12 +182,31 @@ public class Server {
 			// Send command
 			String[] lines = command.split("\n");
 			parts = lines[0].split("\\s+");
-			if (parts.length != 3)
+			if (parts.length < 2 || parts.length > 3)
 				return "ERROR: Wrong number of parameters";
 			String message = "";
 			for (int i=1; i<lines.length; i++)
 				message = message + lines[i] + "\n";
-			return sendMessage(parts[2], parts[1], message);
+			if (parts.length == 3)
+				return sendMessage(parts[2], parts[1], message);
+			else // length = 2
+				return sendMessage("self", parts[1], message);
+		} else if (parts[0].trim().equals("Neighbors")){
+			// Neighbors command
+			if (parts.length == 2)
+				return listNeighbors(parts[1]);
+			else if (parts.length == 1)
+				return listNeighbors("self");
+			else
+				return "ERROR: Wrong number of parameters";
+		} else if (parts[0].trim().equals("Forwarding")){
+			// Forwarding command
+			if (parts.length == 2)
+				return listForwarding(parts[1]);
+			else if (parts.length == 1)
+				return listForwarding("self");
+			else
+				return "ERROR: Wrong number of parameters";
 		} else if (parts[0].trim().equals("ServerLink")){
 			return serverLink(command, clientAddress);
 		} else if (parts[0].trim().equals("ServerUnlink")){
@@ -187,69 +223,169 @@ public class Server {
 			return "Unknown command";
 		}
 	}
+	
+	private String listForwarding(String serverName) {
+		// A map of server => forwarding entries
+		HashMap<String, List<String>> results = new HashMap<String, List<String>>();
+		
+		List<String> serverNames = Arrays.asList(splitNameList(serverName));
+		String unreachableServers = unreachableServers(serverNames);
+		if (!unreachableServers.isEmpty())
+			return "ERROR - unreachable servers: " + unreachableServers;
+		
+		List<String> servers = new ArrayList<String>();
+		for (String server : routingMap.keySet()){
+			if (serverName.equals("*") || serverNames.contains(server))
+				servers.add(server);
+		}
+		
+		// check for self server
+		if (serverName.equals("*") || serverNames.contains("self") || serverNames.contains(this.serverName)){
+			results.put(this.serverName, listLocalForwarding());
+		}
+		
+		// remote servers
+		for (String server : servers){
+			results.put(server, listRemoteForwarding(server));
+		}
+		
+		//returning results in literal manner
+		StringBuffer buffer = new StringBuffer().append(results.keySet().size()).append(" matching servers\n============\n \n");
+		for (String server : results.keySet()){
+			List<String> entries = results.get(server);
+			buffer.append(server).append(": ").append(entries.size()).append(" forwarding entries\n------------\n");
+			for (String entry: entries){
+				buffer.append(entry).append("\n");
+			}
+			buffer.append("\n");
+		}
+		return buffer.toString();
+	}
+	
+	private List<String> listRemoteForwarding(String server) {
+		String response = forward(server, "Forwarding self");
+		List<String> entries = new ArrayList<String>();
+		if (response.trim().startsWith("ERROR"))
+			return entries;
+		String[] responseLines = response.split("\n");
+		for (int i=5; i<responseLines.length; i++){
+			if (!responseLines[i].trim().isEmpty())
+				entries.add(responseLines[i].trim());
+		}
+		return entries;
+	}
+
+	private List<String> listLocalForwarding() {
+		List<String> entries = new ArrayList<String>();
+		for (String server : routingMap.keySet()){
+			RoutingEntry entry = routingMap.get(server);
+			entries.add("Shortest route to " + server + " is " + entry.cost() + " hops via " + entry.next().server().getName());
+		}
+		return entries;
+	}
+
+	private String listNeighbors(String serverName) {
+		// A map of server => neighbors
+		HashMap<String, List<String>> results = new HashMap<String, List<String>>();
+		
+		List<String> serverNames = Arrays.asList(splitNameList(serverName));
+		String unreachableServers = unreachableServers(serverNames);
+		if (!unreachableServers.isEmpty())
+			return "ERROR - unreachable servers: " + unreachableServers;
+		
+		List<String> servers = new ArrayList<String>();
+		for (String server : routingMap.keySet()){
+			if (serverName.equals("*") || serverNames.contains(server))
+				servers.add(server);
+		}
+		
+		// check for self server
+		if (serverName.equals("*") || serverNames.contains("self") || serverNames.contains(this.serverName)){
+			results.put(this.serverName, listLocalNeighbors());
+		}
+		
+		// remote servers
+		for (String server : servers){
+			results.put(server, listRemoteNeighbors(server));
+		}
+		
+		//returning results in literal manner
+		StringBuffer buffer = new StringBuffer().append(results.keySet().size()).append(" matching servers\n============\n \n");
+		for (String server : results.keySet()){
+			List<String> neighbors = results.get(server);
+			buffer.append(server).append(": ").append(neighbors.size()).append(" neighbors\n------------\n");
+			for (String neighbor: neighbors){
+				buffer.append(neighbor).append("\n");
+			}
+			buffer.append("\n");
+		}
+		return buffer.toString();
+	}
+	
+	private List<String> listRemoteNeighbors(String server) {
+		String response = forward(server, "Neighbors self");
+		List<String> neighbors = new ArrayList<String>();
+		if (response.trim().startsWith("ERROR"))
+			return neighbors;
+		String[] responseLines = response.split("\n");
+		for (int i=5; i<responseLines.length; i++){
+			if (!responseLines[i].trim().isEmpty())
+				neighbors.add(responseLines[i].trim());
+		}
+		return neighbors;
+	}
+
+	private List<String> listLocalNeighbors() {
+		List<String> neighbors = new ArrayList<String>();
+		for (Neighbor neighbor : this.neighbors)
+			neighbors.add(neighbor.server().getName() + " @ " + neighbor.server().getIpAddress() + ":" + neighbor.server().getPort());
+		return neighbors;
+	}
 
 	private String sendMessage(String serverName, String clientName, String message) {
 		// A map of server => clients
-		HashMap<String, List<String>> recepients = new HashMap<String, List<String>>();
+		HashMap<String, List<String>> results = new HashMap<String, List<String>>();
+		
+		List<String> serverNames = Arrays.asList(splitNameList(serverName));
+		String unreachableServers = unreachableServers(serverNames);
+		if (!unreachableServers.isEmpty())
+			return "ERROR - unreachable servers: " + unreachableServers;
+		
+		List<String> servers = new ArrayList<String>();
+		for (String server : routingMap.keySet()){
+			if (serverName.equals("*") || serverNames.contains(server))
+				servers.add(server);
+		}
+		
 		// check for self server
-		Boolean self = false;
-		if (serverName.equals("*") || serverName.toLowerCase().matches("(\"(.+\\,)?)?self((\\,.+)?\")?")){
-			recepients.put("self", sendLocalMessage(clientName, message));
-			self = true;
+		if (serverName.equals("*") || serverNames.contains("self") || serverNames.contains(this.serverName)){
+			results.put(this.serverName, sendLocalMessage(clientName, message));
 		}
-		//retrieving other servers
-		List<Record> servers = database.retrieveServers(serverName, null, null);
-		if (serverName != "*"){
-			Integer serverCount = serverName.length() - serverName.replaceAll("\\,", "").length() + 1;
-			if (self)
-				serverCount -= 1;
-			if (servers.size() < serverCount)
-				return "ERROR: Unknown server name(s)";
-		}
-		// sending to clients from other linked servers
-		String unlinkedServers = "";
-		String deadServers = "";
-		for (Record server : servers){
-			if (!server.isLinked()){
-				unlinkedServers = unlinkedServers + " " + server.getUrl();
-				continue;
-			}
-			if (recepients.get(server.getName()) != null)
-				continue;
-			try {
-				recepients.put(server.getName(), sendRemoteMessage(server, clientName, message));
-			} catch (SocketTimeoutException e) {
-				deadServers = deadServers + " " + server.getName();
-			}
+		
+		// remote servers
+		for (String server : servers){
+			results.put(server, sendRemoteMessage(server, clientName, message));
 		}
 		
 		//returning results in literal manner
 		StringBuffer buffer = new StringBuffer();
 		Integer resultCount = 0;
-		for (String server : recepients.keySet()){
-			List<String> clients = recepients.get(server);
+		for (String server : results.keySet()){
+			List<String> clients = results.get(server);
 			resultCount += clients.size();
 			for (String client : clients){
 				buffer.append(server).append("/").append(client).append("\n");
 			}
 		}
-		String warning = "";
-		if (!unlinkedServers.isEmpty())
-			warning += " - WARNING: unlinked servers were excluded: [" + unlinkedServers + "]";
-		if (!deadServers.isEmpty())
-			warning += " - WARNING: Dead linked servers: [" + deadServers + "]";
-		if (resultCount == 0)
-			return "Error: no matching recepients available" + warning + "\n" + buffer.toString();
-		else
-			return "Delivered to " + resultCount + " recepients" + warning + "\n" + buffer.toString();
+		return "Delivered to " + resultCount + " recepients" + "\n" + buffer.toString();
 	}
 
-	private List<String> sendRemoteMessage(Record server, String clientName, String message) throws SocketTimeoutException {
-		String response = sendAndReceive(server.getIpAddress(), server.getPort(), "Send " + clientName + " self\n" + message);
-		if (response.trim().startsWith("ERROR"))
-			throw new SocketTimeoutException();
-		String[] responseLines = response.split("\n");
+	private List<String> sendRemoteMessage(String server, String clientName, String message) {
+		String response = forward(server, "Send " + clientName + " self\n" + message);
 		List<String> clients = new ArrayList<String>();
+		if (response.trim().startsWith("ERROR"))
+			return clients;
+		String[] responseLines = response.split("\n");
 		for (int i=1; i<responseLines.length; i++){
 			if (!responseLines[i].trim().isEmpty() && responseLines[i].indexOf("/") > 0)
 				clients.add(responseLines[i].trim().split("/")[1]);
@@ -298,7 +434,7 @@ public class Server {
 		
 		// check for self server
 		if (serverName.equals("*") || serverNames.contains("self") || serverNames.contains(this.serverName)){
-			results.put("self", listLocalClients(clientName));
+			results.put(this.serverName, listLocalClients(clientName));
 		}
 		
 		// remote servers
@@ -355,6 +491,8 @@ public class Server {
 	
 	private String serverLink(String command, InetAddress address) {
 		String[] parts = command.trim().split("\\s+");
+		if (this.serverName.equals(parts[1].trim()))
+			return "NAMEERROR";
 		List<Record> matches = database.retrieveServers("*", address.toString().replaceFirst("/", ""), new Integer(parts[2]));
 		if (matches.isEmpty()){
 			database.insertServer(address.toString().replaceFirst("/", ""), new Integer(parts[2]));
@@ -389,7 +527,7 @@ public class Server {
 		if ("ERROR".equals(response))
 			return "ERROR: unable to connect to " + server.getUrl();
 		if ("NAMEERROR".equals(response))
-			return "ERROR: name duplication occurred in network";
+			return "ERROR: server name duplication - can't link";
 		else {
 			String[] parts = response.trim().split("\\s+");
 			server.setName(parts[0]);
@@ -500,7 +638,7 @@ public class Server {
 		try {
 			InetAddress address = InetAddress.getByName(ipAddress);
 			DatagramSocket socket = new DatagramSocket();
-//			socket.setSoTimeout(2000);
+			socket.setSoTimeout(2000);
 			System.out.println("<<<< To " + ipAddress + ":" + port + " > " + command);
 			//sending
 			DatagramPacket packet = new DatagramPacket(command.getBytes(), command.getBytes().length, address, port);

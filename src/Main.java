@@ -6,7 +6,8 @@ public class Main {
 	 */
 	public static void main(String[] args) {
 		if (args.length < 2){
-			System.out.println("You have to at least provide a port number and a server name");
+			System.out.println("Missing parameters");
+			System.out.println("Usage: java Main <port> <server name>");
 			return;
 		}
 		String path = args.length < 3 ? null : args[2];

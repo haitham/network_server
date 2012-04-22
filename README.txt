@@ -6,9 +6,9 @@ To compile the server program:
 	make
 	
 Afterwards, run the server program:
-	java Main <port-number> [<data-file>]
+	java Main <port-number> <server-name>
 <port-number> is the port you want the server to start listening to (mandatory).
-<data-file> is the path to a data file you want the server to load (optional). If not provided, the server will create one and automatically save data to it before exitting. The default data file path is current_directory/datafile.
+<server-name> is the name of the starting server.
 
 ======
 
@@ -28,9 +28,9 @@ Usage: You can type one of the following commands
 		Sets the server properties for all subsequent requests.
 	Test
 		Tests the connection to the server
-	Insert <server name> <IP address> <port number>
+	Insert <IP address> <port number>
 		Inserts a new server
-	Delete <server name> [<IP address>] [<port number>]
+	Delete [<IP address>] [<port number>]
 		Deletes an existing server
 	Find <server name> <IP address> 
 		Retreives the servers having the given (possibly wildcard) parameters and their count.
@@ -38,9 +38,9 @@ Usage: You can type one of the following commands
 		Kills the server
 	Quit
 		Quits the client
-	Link <server name>
+	Link {<IP address> <port number>} | <server name>
 		Checks the given server, flags a logical link to it if it's alive.
-	Unlink <server name>
+	Unlink {<IP address> <port number>} | <server name>
 		Removes the logical link with the given server
 	Register <client name> <port number>
 		Registers the client on the server under the given name,
@@ -53,6 +53,10 @@ Usage: You can type one of the following commands
 	Send <client name list> <server name list> <message>
 		Sends the given message to the clients matching the client name list on the given servers.
 		<message> should start on a new line and ends by a line containing only a period.
+	Neighbors <server name list>
+		Retreives the neighbors of each server in the server name list.
+	Forwarding <server name list>
+		Retreives the Routing table of each server in the server name list.
 
 
 ======

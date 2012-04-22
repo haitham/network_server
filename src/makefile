@@ -9,7 +9,9 @@ CLASSES = \
 	Server.java \
 	Database.java \
 	IPAddress.java \
-	Record.java 
+	Record.java \
+	RoutingEntry.java \
+	Neighbor.java 
 
 default: classes
 
